@@ -1,30 +1,212 @@
 <!DOCTYPE html><html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><link rel="icon" href="data:">
-<title>llm chat with llm_proxy</title>
+<title>AIチャット</title>
 </head><body>
 
-<h1>llm chat with llm_proxy</h1>
-<input id="comment" type="text" size=50><button id="btn">send</button>
-<div id="response"></div>
-<hr>
-<a href=http://github.com/code4fukui/llm_proxy>src on GitHub</a><br>
+<div id=body>
+
+<h1>AIチャット</h1>
+AIの設定
+<select id=selsys>
+  <option value="">AIの設定を変更できます</option>
+<!--
+  <option>フランクに短く回答してください</option>
+  <option>小学生でもわかるように回答してください</option>
+  <option>語尾を「にゃん」にしてかわいく、短く回答してください</option>
+  <option>大学の教授の用に厳格に堅い文章で回答してください</option>
+  <option value="other">その他（自由に記述してください）</option>
+-->
+</select>
+<button id=btnclear>会話クリア</button>
+<br>
+<textarea id=sys style="display:none"></textarea>
+<div id=view></div>
+
+</div>
+
+<div id=bottom>
+<form id=form>
+<textarea id=q placeholder="AIへの会話をここに書きます" autocomplete="off"></textarea>
+<input type=submit value="送信"><br>
+<!--<button id=btncls>クリア</button>-->
+</form>
+<a href=https://github.com/code4fukui/ai_chat/>src on GitHub</a> by <a href=https://openai.com/api/>OpenAI API</a> (<a href=qa.html>simple qa</a> / <a href=talk.html>talk</a> / <a href=talk_en.html>talk in English</a>)<br>
+</div>
+
 
 <script type="module">
+import { fetchJSON } from "https://js.sabae.cc/fetchJSON.js";
+import { sleep } from "https://js.sabae.cc/sleep.js";
 import { llm } from "./llm.js";
 
-const add = (p, s) => {
-  const div = document.createElement("div");
-  div.textContent = p + ": " + s;
-  response.appendChild(div);
+const aichar = {
+  "ふくっち": `あなたは「ふくっち」です。本名は福野泰介。株式会社jig.jpの社長です。
+趣味はドライブとロボットづくりとプログラミングです。
+詳しくない分野の質問は、うまくはぐらかします。`,
+  "先生": `あなたは小学校の先生です。
+趣味は料理と園芸です。
+どんな質問にも優しくわかりやすく答えます。`,
+  "ねこ": `あなたはねこです。
+まだ1才の三毛猫です。
+語尾を「にゃん」にしてかわいく、短く回答してください。`,
+  "アイドル": `あなたの職業はアイドルです。
+女子高生っぽい話し言葉で回答してください。
+名前は愛です。
+年齢は24才ですが、18才と自称しています。`,
+  "その他（自由に記入してください）": ``,
 };
 
-btn.onclick = async () => {
-  const s = comment.value;
-  comment.value = "";
-  const prompt = `ユーザー: ${s}\nシステム: `;
-  add("ユーザー", s);
-  const text = await llm(prompt);
-  add("システム", text);
+for (const name in aichar) {
+  const opt = document.createElement("option");
+  opt.textContent = name;
+  selsys.appendChild(opt);
+}
+selsys.oninput = () => {
+  if (selsys.value == "") {
+    sys.value = "";
+    sys.style.display = "none";
+  } else {
+    sys.value = aichar[selsys.value];
+    sys.style.display = "block";
+  }
+};
+
+
+form.onsubmit = async (e) => {
+  e.preventDefault();
+  const prompt = q.value;
+  if (!prompt) {
+    return;
+  }
+
+  const div = document.createElement("div");
+  div.textContent = prompt;
+  div.className = "user";
+  q.value = "";
+  view.appendChild(div);
+  view.scrollIntoView({ block: "end", behavior: "smooth" });
+
+  const messages = [];
+  const ncnv = 5;
+  const nstart = Math.max(view.children.length - ncnv, 0);
+  //for (const div of view.children) {
+  for (let i = view.children.length - 1; i >= nstart; i--) {
+    const div = view.children[i];
+    const content = div.textContent;
+    messages.unshift((div.className == "assistant" ? "システム" : "ユーザー") + ": " + content);
+  }
+  if (sys.value) {
+    messages.unshift("設定: " + sys.value);
+  }
+  
+  const pp = messages.join("\n") + "\nシステム: ";
+  console.log(pp);
+
+  try {
+    const res = await llm(pp);
+    const div2 = document.createElement("div");
+    div2.className = "assistant";
+    const ss = res.split("\n\n");
+    div2.textContent = ss[0];
+    view.appendChild(div2);
+    view.scrollIntoView({ block: "end", behavior: "smooth" });
+    for (let i = 1; i < ss.length; i++) {
+      await sleep(1500);
+      div2.textContent += "\n\n" + ss[i];
+      view.scrollIntoView({ block: "end", behavior: "smooth" });
+    }
+  } catch (e) {
+    alert("エラー発生。もう一度お試しください。");
+    view.removeChild(div);
+    q.value = prompt;
+  }
+};
+
+btnclear.onclick = () => {
+  view.innerHTML = "";
 };
 </script>
 
+<style>
+body {
+  margin: 0;
+  font-family: sans-serif;
+}
+h1 {
+  margin: 0 0 .2em 0;
+}
+#body {
+  padding: .5em;
+}
+textarea {
+  font-size: 16px;
+  width: 90vw;
+  height: 5em;
+}
+select {
+  margin-right: .5em;
+}
+#q {
+  padding: .5em .5em;
+  margin: .5em 0 0 0;
+  width: 80%;
+  font-size: 16px;
+  resize: none;
+}
+input[type=submit] {
+  margin: 3em 0;
+  padding: .3em;
+  vertical-align: top;
+}
+.user, .assistant {
+  white-space: pre-wrap;
+  border: 1px solid black;
+  border-radius: .3em;
+  padding: .3em .5em;
+  margin: .3em;
+}
+.user {
+  margin-right: 1.5em;
+  border-bottom-left-radius: 0;
+
+  /*
+  background-color: #5fad56;
+  color: white;
+  */
+  /*
+  background-color: #ff3366;
+  color: white;
+  */
+}
+.assistant {
+  margin-left: 1.5em;
+  border-bottom-right-radius: 0;
+
+  /*
+  background-color: #ff7592;
+  color: white;
+  */
+  /*
+  background-color: #ffff66;
+  color: #000000;
+  */
+}
+#view {
+  padding-bottom: 9.5em;
+
+  /*
+  background-color: #f5f5f5;
+  */
+}
+#bottom {
+  position: fixed;
+  bottom: 0;
+  width: 100vw;
+  padding: .5em;
+  margin: 0;
+  background-color: #f0f0f0;
+}
+a {
+  color: gray !important;
+}
+</style>
 </body></html>
